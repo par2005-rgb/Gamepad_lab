@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PADCHECK // Retro Gamepad Tester</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+/* ============ RESET & VARIABLES ============ */
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#05050a;
+  --line:#1c1c33;
+  --green:#39ff14;
+  --cyan:#00e5ff;
+  --magenta:#ff2bd6;
+  --amber:#ffb000;
+  --red:#ff3355;
+  --dim:#454568;
+  --text:#a8ffbe;
+}
+
+html,body{height:100%}
+
+body{
+  min-height:100vh;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, #10102a 0%, transparent 70%),
+    var(--bg);
+  color:var(--text);
+  font-family:'VT323','Courier New',monospace;
+  font-size:20px;
+  line-height:1.35;
+  padding:20px 14px 70px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:16px;
+  overflow-x:hidden;
+  animation:crtFlicker 6s infinite;
+}
+
+@keyframes crtFlicker{
+  0%,100%{opacity:1}
+  91%{opacity:1}
+  92%{opacity:.93}
+  93%{opacity:1}
+  96%{opacity:.97}
+  97%{opacity:1}
+}
+
+/* ============ CRT OVERLAYS ============ */
+.scanlines{
+  position:fixed;inset:0;pointer-events:none;z-index:9998;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(0,0,0,0) 0px,
+    rgba(0,0,0,0) 2px,
+    rgba(0,0,0,.45) 3px,
+    rgba(0,0,0,.45) 4px
+  );
+  opacity:.5;
+}
+.vignette{
+  position:fixed;inset:0;pointer-events:none;z-index:9997;
+  background:radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.85) 100%);
+}
+
+/* ============ HEADER ============ */
+.hud{
+  width:100%;max-width:1180px;text-align:center;
+  border:2px solid var(--line);
+  background:linear-gradient(180deg,#0d0d1c,#07070e);
+  padding:18px 16px 14px;
+  box-shadow:0 0 0 1px #000, 0 0 40px rgba(57,255,20,.07), inset 0 0 50px rgba(0,0,0,.85);
+  position:relative;
+}
+.hud::before,.hud::after{
+  content:'';position:absolute;width:16px;height:16px;
+  border:2px solid var(--green);opacity:.5;
+}
+.hud::before{top:-2px;left:-2px;border-right:none;border-bottom:none}
+.hud::after{bottom:-2px;right:-2px;border-left:none;border-top:none}
+
+h1{
+  font-family:'Press Start 2P',monospace;
+  font-size:clamp(16px,4vw,32px);
+  letter-spacing:3px;
+  color:var(--green);
+  text-shadow:0 0 8px var(--green),0 0 28px rgba(57,255,20,.55),3px 3px 0 #063300;
+  line-height:1.4;
+}
+h1 .acc{color:var(--magenta);text-shadow:0 0 8px var(--magenta),0 0 28px rgba(255,43,214,.5),3px 3px 0 #3a0030}
+
+.sub{
+  font-size:17px;color:var(--dim);letter-spacing:3px;margin-top:8px;
+}
+
+.status{
+  display:inline-flex;align-items:center;gap:9px;
+  margin-top:12px;
+  border:1px solid var(--line);
+  background:#070710;
+  padding:5px 16px;
+  font-size:17px;letter-spacing:2px;
+  color:var(--amber);
+}
+.status .dot{
+  width:9px;height:9px;border-radius:50%;
+  background:var(--red);
+  box-shadow:0 0 8px var(--red);
+  animation:blink 1.1s steps(2) infinite;
+}
+.status.live{color:var(--green);border-color:rgba(57,255,20,.4)}
+.status.live .dot{background:var(--green);box-shadow:0 0 10px var(--green)}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.15}}
+
+/* ============ GRID ============ */
+.grid{
+  display:grid;
+  gap:14px;
+  width:100%;
+  max-width:1180px;
+  grid-template-columns:1fr 1fr;
+  grid-template-areas:
+    "pad stick"
+    "trig stat";
+}
+.panel-pad{grid-area:pad}
+.panel-stick{grid-area:stick}
+.panel-trig{grid-area:trig}
+.panel-stat{grid-area:stat}
+
+@media(max-width:880px){
+  .grid{
+    grid-template-columns:1fr;
+    grid-template-areas:"pad" "stick" "trig" "stat";
+  }
+}
+
+/* ============ PANELS ============ */
+.panel{
+  border:2px solid var(--line);
+  background:linear-gradient(180deg,rgba(20,20,42,.55),rgba(7,7,14,.95));
+  padding:16px;
+  box-shadow:inset 0 0 34px rgba(0,0,0,.75), 0 0 22px rgba(0,0,0,.6);
+  position:relative;
+  display:flex;
+  flex-direction:column;
+}
+.panel h2{
+  font-family:'Press Start 2P',monospace;
+  font-size:10px;
+  letter-spacing:1.5px;
+  color:var(--cyan);
+  text-shadow:0 0 9px rgba(0,229,255,.65);
+  margin-bottom:16px;
+  display:flex;align-items:center;gap:9px;
+  border-bottom:1px dashed var(--line);
+  padding-bottom:11px;
+}
+.tag{color:var(--magenta);font-size:9px;text-shadow:0 0 8px rgba(255,43,214,.7)}
+
+.hint{
+  margin-top:auto;padding-top:12px;
+  font-size:15px;color:var(--dim);letter-spacing:1px;text-align:center;
+}
+
+/* ============ CONTROLLER PAD MAP ============ */
+.pad{
+  width:100%;max-width:440px;margin:0 auto;
+  display:flex;flex-direction:column;gap:10px;
+}
+.pad-row{display:flex;justify-content:space-between;gap:10px}
+.pad-mid{display:flex;justify-content:space-between;align-items:center;gap:8px}
+
+.btn{
+  display:flex;align-items:center;justify-content:center;
+  border:2px solid var(--line);
+  background:#0e0e1c;
+  color:var(--dim);
+  border-radius:5px;
+  font-family:'Press Start 2P',monospace;
+  font-size:8px;
+  letter-spacing:.5px;
+  user-select:none;
+  box-shadow:inset 0 0 10px rgba(0,0,0,.9);
+  transition:background .05s,color .05s,box-shadow .05s,border-color .05s,transform .05s;
+  min-height:38px;
+  padding:4px;
+  text-align:center;
+}
+.btn.on{
+  border-color:var(--green);
+  background:var(--green);
+  color:#03170a;
+  box-shadow:0 0 14px var(--green),0 0 34px rgba(57,255,20,.55),inset 0 0 12px rgba(255,255,255,.6);
+  transform:translateY(1px) scale(.96);
+  text-shadow:none;
+}
+.btn.na{opacity:.15}
+
+.pad-row .btn{width:92px;height:40px}
+.pad-row.top .btn{height:36px;border-color:#2a2a48}
+
+.dpad{
+  display:grid;
+  grid-template-columns:repeat(3,40px);
+  grid-template-rows:repeat(3,40px);
+  gap:4px;
+}
+.dpad .btn{width:40px;height:40px;min-height:0;font-size:11px;padding:0}
+.dpad-u{grid-area:1/2}
+.dpad-l{grid-area:2/1}
+.dpad-r{grid-area:2/3}
+.dpad-d{grid-area:3/2}
+
+.face{
+  display:grid;
+  grid-template-columns:repeat(3,40px);
+  grid-template-rows:repeat(3,40px);
+  gap:4px;
+}
+.face .btn{width:40px;height:40px;min-height:0;font-size:11px;padding:0}
+.face-y{grid-area:1/2}
+.face-x{grid-area:2/1}
+.face-b{grid-area:2/3}
+.face-a{grid-area:3/2}
+
+.face .on{border-color:var(--cyan);background:var(--cyan);color:#00181c;
+  box-shadow:0 0 14px var(--cyan),0 0 34px rgba(0,229,255,.55),inset 0 0 12px rgba(255,255,255,.6)}
+
+.center-btns{display:flex;flex-direction:column;gap:7px}
+.center-btns .btn{width:66px;height:28px;min-height:0;font-size:7px}
+
+.pad-bottom{display:flex;justify-content:space-between;gap:10px}
+.pad-bottom .btn{width:80px;height:34px;font-size:7px}
+
+/* ============ STICKS ============ */
+.sticks{display:flex;gap:14px}
+.stick-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:7px}
+.stick-col canvas{width:100%;height:auto;max-width:220px;display:block}
+.stick-title{
+  font-family:'Press Start 2P',monospace;font-size:9px;
+  color:var(--magenta);letter-spacing:1px;
+  text-shadow:0 0 9px rgba(255,43,214,.6);
+}
+.readout{
+  font-size:17px;letter-spacing:1px;color:var(--green);
+  text-shadow:0 0 8px rgba(57,255,20,.5);
+  white-space:nowrap;
+}
+
+/* ============ TRIGGERS ============ */
+.trig{margin-bottom:18px}
+.trig-head{
+  display:flex;justify-content:space-between;align-items:baseline;
+  font-family:'Press Start 2P',monospace;font-size:10px;
+  color:var(--cyan);letter-spacing:1px;margin-bottom:7px;
+  text-shadow:0 0 8px rgba(0,229,255,.5);
+}
+.trig-val{color:var(--green);text-shadow:0 0 8px rgba(57,255,20,.5)}
+.bar{
+  height:26px;border:2px solid var(--line);background:#08080f;
+  position:relative;overflow:hidden;
+}
+.bar::after{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,transparent 0 9px,rgba(0,0,0,.55) 9px 11px);
+  pointer-events:none;
+}
+.fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg,#0d5c00,var(--green));
+  box-shadow:0 0 18px rgba(57,255,20,.7);
+  transition:width .04s linear;
+}
+.bump-row{display:flex;gap:12px;margin-top:auto;padding-top:14px}
+.bump-row .btn{flex:1;height:46px;font-size:10px}
+
+/* ============ TELEMETRY ============ */
+.score-box{
+  display:flex;align-items:center;justify-content:space-between;
+  border:2px solid var(--line);background:#08080f;
+  padding:12px 16px;margin-bottom:12px;
+}
+.score-val{
+  font-family:'Press Start 2P',monospace;
+  font-size:34px;color:var(--green);letter-spacing:2px;
+  text-shadow:0 0 14px var(--green),0 0 40px rgba(57,255,20,.5);
+  line-height:1;
+}
+.score-grade{
+  font-family:'Press Start 2P',monospace;font-size:10px;
+  color:var(--amber);letter-spacing:1px;text-align:right;
+  text-shadow:0 0 9px rgba(255,176,0,.6);
+  max-width:45%;
+}
+.meter{
+  height:12px;border:1px solid var(--line);background:#08080f;
+  margin-bottom:16px;overflow:hidden;
+}
+.meter-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg,var(--red),var(--amber),var(--green));
+  transition:width .25s ease;
+  box-shadow:0 0 14px rgba(57,255,20,.6);
+}
+
+.stats{list-style:none;display:flex;flex-direction:column;gap:2px}
+.stats li{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:6px 4px;
+  border-bottom:1px dotted #16162b;
+  font-size:18px;letter-spacing:1px;
+}
+.stats li span{color:var(--dim)}
+.stats li b{
+  color:var(--green);font-weight:normal;
+  text-shadow:0 0 8px rgba(57,255,20,.45);
+  max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+.actions{display:flex;gap:10px;margin-top:auto;padding-top:16px}
+.actions button{
+  flex:1;
+  font-family:'Press Start 2P',monospace;font-size:9px;
+  letter-spacing:1px;
+  padding:13px 6px;
+  color:var(--cyan);
+  background:#0c0c18;
+  border:2px solid var(--cyan);
+  cursor:pointer;
+  transition:all .12s;
+  text-shadow:0 0 8px rgba(0,229,255,.5);
+}
+.actions button:hover{
+  background:var(--cyan);color:#00181c;text-shadow:none;
+  box-shadow:0 0 22px rgba(0,229,255,.7);
+}
+.actions button:active{transform:translateY(2px)}
+
+/* ============ FOOTER ============ */
+footer{
+  font-size:15px;color:var(--dim);letter-spacing:2px;text-align:center;
+  max-width:1180px;
+}
+
+/* ============ BOOT OVERLAY ============ */
+.boot{
+  position:fixed;inset:0;z-index:9990;
+  background:rgba(3,3,8,.94);
+  display:flex;align-items:center;justify-content:center;
+  transition:opacity .45s ease, visibility .45s;
+  padding:20px;
+}
+.boot.hide{opacity:0;visibility:hidden;pointer-events:none}
+.boot-inner{
+  border:2px solid var(--green);
+  background:#08080f;
+  padding:40px 34px;
+  text-align:center;
+  box-shadow:0 0 40px rgba(57,255,20,.25), inset 0 0 60px rgba(0,0,0,.9);
+  max-width:520px;
+}
+.boot-inner h2{
+  font-family:'Press Start 2P',monospace;
+  font-size:16px;color:var(--green);
+  text-shadow:0 0 14px var(--green);
+  margin-bottom:22px;line-height:1.7;
+}
+.boot-inner p{font-size:20px;color:var(--text);margin-bottom:12px;letter-spacing:1px}
+.boot-inner .blink{
+  color:var(--amber);
+  animation:blink 1.2s steps(2) infinite;
+  margin-top:22px;
+  font-size:22px;
+  letter-spacing:3px;
+}
+.boot-inner .skip{
+  display:inline-block;margin-top:24px;
+  font-size:16px;color:var(--dim);letter-spacing:2px;
+  cursor:pointer;border-bottom:1px dotted var(--dim);
+}
+.boot-inner .skip:hover{color:var(--cyan)}
+</style>
+</head>
+<body>
+
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<!-- ===== HEADER ===== -->
+<header class="hud">
+  <h1>PAD<span class="acc">CHECK</span></h1>
+  <p class="sub">RETRO GAMEPAD DIAGNOSTIC TERMINAL // v1.0</p>
+  <div class="status" id="status">
+    <span class="dot"></span><span id="statusText">NO SIGNAL</span>
+  </div>
+</header>
+
+<!-- ===== MAIN GRID ===== -->
+<main class="grid">
+
+  <!-- 01 CONTROLLER MAP -->
+  <section class="panel panel-pad">
+    <h2><span class="tag">01</span> CONTROLLER MAP</h2>
+    <div class="pad">
+      <div class="pad-row top">
+        <div class="btn" data-b="6">LT</div>
+        <div class="btn" data-b="7">RT</div>
+      </div>
+      <div class="pad-row top">
+        <div class="btn" data-b="4">LB</div>
+        <div class="btn" data-b="5">RB</div>
+      </div>
+      <div class="pad-mid">
+        <div class="dpad">
+          <div class="btn dpad-u" data-b="12">&#9650;</div>
+          <div class="btn dpad-l" data-b="14">&#9664;</div>
+          <div class="btn dpad-r" data-b="15">&#9654;</div>
+          <div class="btn dpad-d" data-b="13">&#9660;</div>
+        </div>
+        <div class="center-btns">
+          <div class="btn" data-b="8">SELECT</div>
+          <div class="btn" data-b="9">START</div>
+        </div>
+        <div class="face">
+          <div class="btn face-y" data-b="3">Y</div>
+          <div class="btn face-x" data-b="2">X</div>
+          <div class="btn face-b" data-b="1">B</div>
+          <div class="btn face-a" data-b="0">A</div>
+        </div>
+      </div>
+      <div class="pad-bottom">
+        <div class="btn" data-b="10">L3</div>
+        <div class="btn" data-b="16">GUIDE</div>
+        <div class="btn" data-b="11">R3</div>
+      </div>
+    </div>
+    <p class="hint">Press every button to complete the scan.</p>
+  </section>
+
+  <!-- 02 ANALOG STICKS -->
+  <section class="panel panel-stick">
+    <h2><span class="tag">02</span> ANALOG STICKS</h2>
+    <div class="sticks">
+      <div class="stick-col">
+        <canvas id="stickL" width="300" height="300"></canvas>
+        <div class="stick-title">L-STICK</div>
+        <div class="readout" id="readL">X +0.00 &nbsp; Y +0.00</div>
+      </div>
+      <div class="stick-col">
+        <canvas id="stickR" width="300" height="300"></canvas>
+        <div class="stick-title">R-STICK</div>
+        <div class="readout" id="readR">X +0.00 &nbsp; Y +0.00</div>
+      </div>
+    </div>
+    <p class="hint">Release both sticks to measure drift accurately.</p>
+  </section>
+
+  <!-- 03 TRIGGERS -->
+  <section class="panel panel-trig">
+    <h2><span class="tag">03</span> TRIGGERS</h2>
+    <div class="trig">
+      <div class="trig-head"><span>LT</span><span class="trig-val" id="valLT">0%</span></div>
+      <div class="bar"><div class="fill" id="fillLT"></div></div>
+    </div>
+    <div class="trig">
+      <div class="trig-head"><span>RT</span><span class="trig-val" id="valRT">0%</span></div>
+      <div class="bar"><div class="fill" id="fillRT"></div></div>
+    </div>
+    <div class="bump-row">
+      <div class="btn" data-b="4">LB</div>
+      <div class="btn" data-b="5">RB</div>
+    </div>
+  </section>
+
+  <!-- 04 TELEMETRY -->
+  <section class="panel panel-stat">
+    <h2><span class="tag">04</span> TELEMETRY</h2>
+    <div class="score-box">
+      <div class="score-val" id="scoreVal">--</div>
+      <div class="score-grade" id="scoreGrade">SCANNING...</div>
+    </div>
+    <div class="meter"><div class="meter-fill" id="scoreBar"></div></div>
+    <ul class="stats">
+      <li><span>POLLING RATE</span><b id="stPoll">-- Hz</b></li>
+      <li><span>STICK DRIFT</span><b id="stDrift">0.0%</b></li>
+      <li><span>BUTTONS TESTED</span><b id="stBtn">0 / 17</b></li>
+      <li><span>STICK RANGE</span><b id="stRange">0%</b></li>
+      <li><span>TRIGGER RANGE</span><b id="stTrig">0%</b></li>
+      <li><span>DEVICE</span><b id="stDev">--</b></li>
+    </ul>
+    <div class="actions">
+      <button id="btnReset">RESET</button>
+      <button id="btnCopy">COPY REPORT</button>
+    </div>
+  </section>
+
+</main>
+
+<footer>CONNECT &middot; TEST &middot; SCORE &middot; SHARE &nbsp;//&nbsp; WORKS BEST IN CHROME / EDGE / FIREFOX</footer>
+
+<!-- ===== BOOT OVERLAY ===== -->
+<div class="boot" id="boot">
+  <div class="boot-inner">
+    <h2>&#9679; INSERT CONTROLLER &#9679;</h2>
+    <p>Connect your gamepad via USB or Bluetooth.</p>
+    <p>Then press any button to wake it up.</p>
+    <p class="blink">PRESS ANY BUTTON</p>
+    <div class="skip" id="skipBoot">SKIP &gt;&gt;</div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   PADCHECK — Retro Gamepad Tester
+   ========================================================= */
+
+/* ---------- Button index -> label (standard mapping) ---------- */
+const BTN_NAMES = [
+  'A','B','X','Y','LB','RB','LT','RT',
+  'SELECT','START','L3','R3',
+  'D-UP','D-DOWN','D-LEFT','D-RIGHT','GUIDE'
+];
+
+/* ---------- State ---------- */
+const S = {
+  connected : false,
+  index     : null,
+  name      : '',
+  frames    : 0,
+  updates   : 0,
+  prevTs    : -1,
+  pollRate  : 0,
+  lastRate  : 0,
+  buttonsSeen : new Set(),
+  driftMax  : 0,
+  axisMax   : [0,0,0,0],   // max |value| seen per axis (range check)
+  trigMax   : [0,0],       // max value for LT / RT
+  prevAxes  : [0,0,0,0],
+  still     : [0,0,0,0],   // frames the axis has been "still"
+  pad       : null,
+  lastHUD   : 0
+};
+
+/* ---------- DOM refs ---------- */
+const statusEl   = document.getElementById('status');
+const statusText = document.getElementById('statusText');
+const bootEl     = document.getElementById('boot');
+
+const canvasL = document.getElementById('stickL');
+const canvasR = document.getElementById('stickR');
+const ctxL = canvasL.getContext('2d');
+const ctxR = canvasR.getContext('2d');
+
+const readL = document.getElementById('readL');
+const readR = document.getElementById('readR');
+
+const fillLT = document.getElementById('fillLT');
+const fillRT = document.getElementById('fillRT');
+const valLT  = document.getElementById('valLT');
+const valRT  = document.getElementById('valRT');
+
+const scoreVal   = document.getElementById('scoreVal');
+const scoreGrade = document.getElementById('scoreGrade');
+const scoreBar   = document.getElementById('scoreBar');
+
+const stPoll  = document.getElementById('stPoll');
+const stDrift = document.getElementById('stDrift');
+const stBtn   = document.getElementById('stBtn');
+const stRange = document.getElementById('stRange');
+const stTrig  = document.getElementById('stTrig');
+const stDev   = document.getElementById('stDev');
+
+/* ---------- Map button index -> array of DOM elements ---------- */
+const btnEls = new Map();
+document.querySelectorAll('[data-b]').forEach(el => {
+  const i = Number(el.dataset.b);
+  if (!btnEls.has(i)) btnEls.set(i, []);
+  btnEls.get(i).push(el);
+});
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+function fmt(v){
+  const n = Number(v) || 0;
+  return (n >= 0 ? '+' : '') + n.toFixed(2);
+}
+
+function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+
+function gradeFor(s){
+  if (s >= 95) return ['S', 'PRISTINE'];
+  if (s >= 85) return ['A', 'OPTIMAL'];
+  if (s >= 75) return ['B', 'GOOD'];
+  if (s >= 60) return ['C', 'WORN'];
+  if (s >= 40) return ['D', 'DEGRADED'];
+  return ['F', 'CRITICAL'];
+}
+
+/* =========================================================
+   STICK RENDERING
+   ========================================================= */
+function drawStick(ctx, canvas, ax, ay, color){
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const R  = W / 2 - 18;
+
+  ctx.clearRect(0, 0, W, H);
+
+  /* outer ring */
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.strokeStyle = '#232340';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  /* inner grid */
+  ctx.strokeStyle = '#15152b';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+  ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R);
+  ctx.stroke();
+
+  /* concentric guide rings */
+  ctx.strokeStyle = '#111124';
+  ctx.lineWidth = 2;
+  [0.5, 0.75].forEach(f => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * f, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  /* deadzone circle */
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * 0.16, 0, Math.PI * 2);
+  ctx.setLineDash([6, 6]);
+  ctx.strokeStyle = '#2e2e50';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  /* stick position */
+  const px = cx + ax * R;
+  const py = cy + ay * R;
+
+  /* vector line */
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(px, py);
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  /* glow dot */
+  ctx.shadowBlur = 22;
+  ctx.shadowColor = color;
+  ctx.beginPath();
+  ctx.arc(px, py, 11, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  /* dot core */
+  ctx.beginPath();
+  ctx.arc(px, py, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.globalAlpha = 0.9;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  /* center crosshair */
+  ctx.strokeStyle = '#3a3a60';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
+  ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8);
+  ctx.stroke();
+}
+
+/* =========================================================
+   CONNECT / DISCONNECT
+   ========================================================= */
+function onConnect(pad){
+  S.connected = true;
+  S.name = pad.id || 'Unknown Gamepad';
+  resetStats();
+
+  statusEl.classList.add('live');
+  statusText.textContent = 'SIGNAL LOCKED';
+  bootEl.classList.add('hide');
+
+  /* mark unavailable buttons */
+  const count = pad.buttons.length;
+  btnEls.forEach((els, idx) => {
+    els.forEach(el => el.classList.toggle('na', idx >= count));
+  });
+
+  stDev.textContent = S.name;
+}
+
+function onDisconnect(){
+  S.connected = false;
+  S.index = null;
+  statusEl.classList.remove('live');
+  statusText.textContent = 'NO SIGNAL';
+  stDev.textContent = '--';
+  scoreVal.textContent = '--';
+  scoreGrade.textContent = 'SCANNING...';
+  scoreBar.style.width = '0%';
+  bootEl.classList.remove('hide');
+  btnEls.forEach(els => els.forEach(el => el.classList.remove('on')));
+}
+
+function resetStats(){
+  S.buttonsSeen = new Set();
+  S.driftMax = 0;
+  S.axisMax = [0, 0, 0, 0];
+  S.trigMax = [0, 0];
+  S.prevAxes = [0, 0, 0, 0];
+  S.still = [0, 0, 0, 0];
+  S.frames = 0;
+  S.updates = 0;
+  S.prevTs = -1;
+  S.pollRate = 0;
+  S.lastRate = performance.now();
+}
+
+/* =========================================================
+   HEALTH SCORE
+   ---------------------------------------------------------
+   DRIFT    40 pts  — less drift = more points
+   BUTTONS  25 pts  — how many buttons responded
+   STICKS   20 pts  — do axes reach full range?
+   TRIGGER  15 pts  — do LT/RT reach 100%?
+   ========================================================= */
+function computeHealth(){
+  const pad = S.pad;
+
+  /* --- drift (40) --- */
+  const driftNorm = clamp01(S.driftMax / 0.25);
+  const driftPts = 40 * (1 - driftNorm);
+
+  /* --- buttons (25) --- */
+  const totalBtns = pad ? Math.min(pad.buttons.length, 17) : 17;
+  let tested = 0;
+  S.buttonsSeen.forEach(i => { if (i < totalBtns) tested++; });
+  const btnPts = 25 * (tested / Math.max(1, totalBtns));
+
+  /* --- stick range (20) --- */
+  let rangeSum = 0;
+  for (let i = 0; i < 4; i++) rangeSum += clamp01(S.axisMax[i]);
+  const stickPts = 20 * (rangeSum / 4);
+
+  /* --- trigger range (15) --- */
+  const trigPts = 15 * ((clamp01(S.trigMax[0]) + clamp01(S.trigMax[1])) / 2);
+
+  const total = Math.round(driftPts + btnPts + stickPts + trigPts);
+  return {
+    total,
+    driftPts : Math.round(driftPts),
+    btnPts   : Math.round(btnPts),
+    stickPts : Math.round(stickPts),
+    trigPts  : Math.round(trigPts),
+    tested,
+    totalBtns
+  };
+}
+
+/* =========================================================
+   HUD UPDATE (throttled)
+   ========================================================= */
+function updateHUD(now){
+  if (now - S.lastHUD < 90) return;
+  S.lastHUD = now;
+
+  /* polling rate (1-second window) */
+  if (now - S.lastRate >= 1000){
+    S.pollRate = S.updates;
+    S.updates = 0;
+    S.lastRate = now;
+  }
+
+  const h = computeHealth();
+
+  stPoll.textContent  = S.pollRate > 0 ? S.pollRate + ' Hz' : '-- Hz';
+  stDrift.textContent = (S.driftMax * 100).toFixed(1) + '%';
+  stBtn.textContent   = h.tested + ' / ' + h.totalBtns;
+  stRange.textContent = Math.round((S.axisMax.reduce((a, b) => a + b, 0) / 4) * 100) + '%';
+  stTrig.textContent  = Math.round(((S.trigMax[0] + S.trigMax[1]) / 2) * 100) + '%';
+
+  /* score */
+  if (S.buttonsSeen.size === 0 && S.axisMax.every(v => v < 0.05)){
+    scoreVal.textContent = '--';
+    scoreGrade.textContent = 'SCANNING...';
+    scoreBar.style.width = '0%';
+  } else {
+    scoreVal.textContent = h.total;
+    const [g, label] = gradeFor(h.total);
+    scoreGrade.textContent = 'GRADE ' + g + ' // ' + label;
+    scoreBar.style.width = h.total + '%';
+  }
+
+  /* drift warning colour */
+  stDrift.style.color = S.driftMax > 0.12 ? 'var(--red)'
+                      : S.driftMax > 0.05 ? 'var(--amber)'
+                      : 'var(--green)';
+}
+
+/* =========================================================
+   MAIN LOOP
+   ========================================================= */
+function loop(now){
+  requestAnimationFrame(loop);
+
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+
+  /* pick the active pad */
+  let pad = null;
+  if (S.index !== null && pads[S.index] && pads[S.index].connected){
+    pad = pads[S.index];
+  } else {
+    for (let i = 0; i < pads.length; i++){
+      if (pads[i] && pads[i].connected){
+        S.index = i;
+        pad = pads[i];
+        break;
+      }
+    }
+  }
+
+  if (!pad){
+    if (S.connected) onDisconnect();
+    return;
+  }
+
+  if (!S.connected) onConnect(pad);
+  S.pad = pad;
+  S.frames++;
+
+  /* ---------- polling rate ---------- */
+  if (pad.timestamp !== S.prevTs){
+    S.updates++;
+    S.prevTs = pad.timestamp;
+  }
+
+  /* ---------- buttons ---------- */
+  const bcount = Math.min(pad.buttons.length, 17);
+  for (let i = 0; i < bcount; i++){
+    const b = pad.buttons[i];
+    const pressed = b.pressed || b.value > 0.5;
+    const els = btnEls.get(i);
+    if (els){
+      els.forEach(el => el.classList.toggle('on', pressed));
+    }
+    if (pressed) S.buttonsSeen.add(i);
+  }
+
+  /* ---------- triggers (continuous) ---------- */
+  const lt = pad.buttons[6] ? pad.buttons[6].value : 0;
+  const rt = pad.buttons[7] ? pad.buttons[7].value : 0;
+
+  fillLT.style.width = (lt * 100).toFixed(0) + '%';
+  fillRT.style.width = (rt * 100).toFixed(0) + '%';
+  valLT.textContent = Math.round(lt * 100) + '%';
+  valRT.textContent = Math.round(rt * 100) + '%';
+
+  if (lt > S.trigMax[0]) S.trigMax[0] = lt;
+  if (rt > S.trigMax[1]) S.trigMax[1] = rt;
+
+  /* ---------- axes ---------- */
+  const axes = pad.axes;
+  for (let i = 0; i < 4; i++){
+    const v = (axes[i] !== undefined && isFinite(axes[i])) ? axes[i] : 0;
+    const a = Math.abs(v);
+
+    /* full-range tracking */
+    if (a > S.axisMax[i]) S.axisMax[i] = a;
+
+    /* stillness detection */
+    if (Math.abs(v - S.prevAxes[i]) < 0.008){
+      S.still[i]++;
+    } else {
+      S.still[i] = 0;
+    }
+    S.prevAxes[i] = v;
+
+    /* drift = stable off-centre value below 0.5 (heuristic) */
+    if (S.still[i] > 40 && a < 0.5 && a > S.driftMax){
+      S.driftMax = a;
+    }
+  }
+
+  /* ---------- draw sticks ---------- */
+  const lx = axes[0] || 0, ly = axes[1] || 0;
+  const rx = axes[2] || 0, ry = axes[3] || 0;
+
+  drawStick(ctxL, canvasL, lx, ly, '#39ff14');
+  drawStick(ctxR, canvasR, rx, ry, '#00e5ff');
+
+  readL.innerHTML = 'X ' + fmt(lx) + ' &nbsp; Y ' + fmt(ly);
+  readR.innerHTML = 'X ' + fmt(rx) + ' &nbsp; Y ' + fmt(ry);
+
+  /* ---------- HUD ---------- */
+  updateHUD(now);
+}
+
+/* =========================================================
+   EVENTS
+   ========================================================= */
+window.addEventListener('gamepadconnected', e => {
+  S.index = e.gamepad.index;
+  if (!S.connected) onConnect(e.gamepad);
+});
+
+window.addEventListener('gamepaddisconnected', () => {
+  onDisconnect();
+});
+
+document.getElementById('skipBoot').addEventListener('click', () => {
+  bootEl.classList.add('hide');
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  resetStats();
+  scoreVal.textContent = '--';
+  scoreGrade.textContent = 'SCANNING...';
+  scoreBar.style.width = '0%';
+  valLT.textContent = '0%';
+  valRT.textContent = '0%';
+  fillLT.style.width = '0%';
+  fillRT.style.width = '0%';
+});
+
+document.getElementById('btnCopy').addEventListener('click', () => {
+  const h = computeHealth();
+  const [g, label] = gradeFor(h.total);
+
+  const report =
+`=== PADCHECK REPORT ===
+DEVICE        : ${S.name || 'No controller'}
+HEALTH SCORE  : ${h.total}/100  (GRADE ${g} - ${label})
+STICK DRIFT   : ${(S.driftMax * 100).toFixed(1)}%
+POLLING RATE  : ${S.pollRate} Hz
+BUTTONS TESTED: ${h.tested}/${h.totalBtns}
+STICK RANGE   : ${Math.round((S.axisMax.reduce((a,b)=>a+b,0)/4)*100)}%
+TRIGGER RANGE : ${Math.round(((S.trigMax[0]+S.trigMax[1])/2)*100)}%
+BREAKDOWN     : drift ${h.driftPts}/40 | buttons ${h.btnPts}/25 | sticks ${h.stickPts}/20 | triggers ${h.trigPts}/15
+=======================`;
+
+  const btn = document.getElementById('btnCopy');
+  const original = btn.textContent;
+
+  const done = () => {
+    btn.textContent = 'COPIED!';
+    setTimeout(() => { btn.textContent = original; }, 1400);
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(report).then(done).catch(() => fallbackCopy(report, done));
+  } else {
+    fallbackCopy(report, done);
+  }
+});
+
+function fallbackCopy(text, cb){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); cb(); } catch(e){}
+  document.body.removeChild(ta);
+}
+
+/* =========================================================
+   START
+   ========================================================= */
+requestAnimationFrame(loop);
+</script>
+</body>
+  </html>
